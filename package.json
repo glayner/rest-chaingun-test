@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc --declaration",
     "dev": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --no-notify src/index.ts",
-    "start:dev": " nodemon -e ts,json --exec 'node --experimental-specifier-resolution=node --loader ts-node/esm' test/run-chaingun.ts"
+    "start:dev": "nodemon -e ts,json --exec node --experimental-specifier-resolution=node --loader ts-node/esm test/run-chaingun.ts"
   },
   "keywords": [],
   "author": "",

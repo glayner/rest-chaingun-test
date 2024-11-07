@@ -103,14 +103,18 @@ type codeTest = {
   [A in actionType]: CodeTest<A>;
 }[actionType];
 
-interface loopCodeTest {
+export interface loopForOfCodeTest {
   _id?: string;
-  action: "Loop.forEach";
+  action: "Loop.forOf";
   active: boolean
+  parameters:{
+    expression: string;
+    variable: string;
+  }
   children: codeValue[];
 }
 
-interface ifCodeTest {
+export interface ifCodeTest {
   _id?: string;
   action: "Logic.if";
   active: boolean
@@ -119,7 +123,7 @@ interface ifCodeTest {
   parameters: {
     key: string;
     value: string;
-    operator: string;
+    operator:  '==' | '!=' | '>' | '>=' | '<' | '<=';
     hasElse: boolean;
   };
 }
@@ -144,7 +148,7 @@ interface parameterSetDp {
   processedData: { key: string; value: string[] }[]
 }
 
-type codeValue = codeTest | loopCodeTest | ifCodeTest;
+export type codeValue = codeTest | loopForOfCodeTest | ifCodeTest;
 
 export type ChaingunTestStep = codeValue | loadCodeTest
 export type ChaingunActionTypes = actionType | "Load.http" | "Logic.if" | "Loop.forEach"
@@ -195,7 +199,7 @@ export type HttpExecutorResult = {
   }
 }
 
-type ResultData = HttpExecutorResult 
+type ResultData = HttpExecutorResult | Record<string, ResultData[]>
 
 
 export type ChaingunDataController = {

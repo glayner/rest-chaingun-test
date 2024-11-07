@@ -9,12 +9,15 @@ import { sleep } from "../utils/sleep";
 import { replaceMarkers } from '../utils/variable-replacement';
 
 
-export async function executeHttpRequest(chaingunDataController: ChaingunDataController, testStep: ChaingunTestStep, environment: Record<string, any>): Promise<any> {
-  if (testStep.action !== 'Http.get' &&
-    testStep.action !== 'Http.post' &&
-    testStep.action !== 'Http.delete' &&
-    testStep.action !== 'Http.put' &&
-    testStep.action !== 'Http.patch' || !testStep.action) return;
+export async function executeHttpRequest(
+  chaingunDataController: ChaingunDataController,
+  step: ChaingunTestStep,
+  environment: Record<string, any>): Promise<{ chaingunDataController: ChaingunDataController, environment: Record<string, any> }> {
+  if (step.action !== 'Http.get' &&
+    step.action !== 'Http.post' &&
+    step.action !== 'Http.delete' &&
+    step.action !== 'Http.put' &&
+    step.action !== 'Http.patch') return { chaingunDataController, environment };
 
   const transport = {
     request: function httpsWithTimer(...args: any[]) {
@@ -25,14 +28,12 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
     }
   }
 
-  const { bodyType, variable, form = {}, option, payload } = testStep.parameters
-  let { url, headers = {}, params = {} } = testStep.parameters
+  const { bodyType, variable, form = {}, option, payload } = step.parameters
+  let { url, headers = {}, params = {} } = step.parameters
 
-  const method = testStep.action.split('.')[1].toUpperCase()
-  console.log({ url, environment })
+  const method = step.action.split('.')[1].toUpperCase()
+
   url = replaceMarkers(url, environment)
-
-  console.log({ url })
   headers = replaceMarkers(headers, environment)
   params = replaceMarkers(params, environment)
 
@@ -52,7 +53,7 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
   }
 
   const { cookies, results } = chaingunDataController
-  const stepId = testStep._id as string
+  const stepId = step._id as string
 
   if (!results[stepId]) {
     results[stepId] = []
@@ -62,7 +63,7 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
 
 
   const axiosConfig: AxiosRequestConfig = {
-    method: testStep.action.split('.')[1].toUpperCase(),
+    method: step.action.split('.')[1].toUpperCase(),
     url,
     params,
     headers: {
@@ -71,22 +72,23 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
     },
     transport,
   };
-  
+
   if (body) axiosConfig.data = body
 
   if (option?.timeout) {
     axiosConfig.timeout = option.timeout * 1000
   }
 
-  if (!axiosConfig.url) {
+  if (!axiosConfig.url || !axiosConfig.url.startsWith('http')) {
+    const invalidUrlMessage = `Url path has invalid format: "${axiosConfig.url}"`
     results[stepId].push({
       request: axiosConfig,
       response: {
         isError: true,
-        errorMessage: 'invalid url'
+        errorMessage: invalidUrlMessage
       }
     })
-    throw new Error('invalid url')
+    throw new Error(invalidUrlMessage)
   }
 
   const { timings, ...resultHttpReq } = await axios(axiosConfig)
@@ -94,13 +96,17 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
       status: res.status,
       headers: res.headers,
       data: res.data,
-      timings: res.request.timings as Timings
+      timings: res.request.timings as Timings,
+      isError: false,
+      errorMessage: undefined
     }))
     .catch((error: AxiosError) => ({
       status: error.status,
       headers: (error.response?.headers || {}) as AxiosResponseHeaders,
       data: error.response?.data || error.message,
-      timings: error.request?._currentRequest?.timings as Timings
+      timings: error.request?._currentRequest?.timings as Timings,
+      isError: !error.request,
+      errorMessage: error.message
     }))
 
   if (resultHttpReq.headers['set-cookie']) {
@@ -110,25 +116,29 @@ export async function executeHttpRequest(chaingunDataController: ChaingunDataCon
   const currentResult = {
     ...resultHttpReq,
     time: timings?.phases?.total,
-    size: Number(resultHttpReq.headers?.["Content-Length"] as string || JSON.stringify(resultHttpReq.data).length)
+    size: resultHttpReq.isError ? undefined : Number(
+      resultHttpReq.headers?.["Content-Length"] as string ||
+      JSON.stringify(resultHttpReq.data).length
+    )
   }
-
-  console.log({ currentResult })
-
-  environment[variable] = currentResult
 
   results[stepId].push({
     request: axiosConfig,
     response: {
       ...resultHttpReq,
-      isError: false,
       timings,
       size: currentResult.size
     }
   })
 
+  if (resultHttpReq.isError) {
+    throw new Error(resultHttpReq.errorMessage)
+  }
+
+  environment[variable] = currentResult
+
   if (option?.sleepAfter)
     await sleep(option.sleepAfter * 1000)
 
-  return environment;
+  return { chaingunDataController, environment };
 }
